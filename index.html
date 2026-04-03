@@ -1,306 +1,94 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Fireout Studio</title>
+// ---------- NETWORK (PHOTON STYLE) ----------
+let socket = new WebSocket("wss://echo.websocket.events"); // demo server
 
-<style>
-body {
-    margin: 0;
-    overflow: hidden;
-    background: #2b2b2b;
-    font-family: Arial;
-    color: #ddd;
+let playerId = Math.random().toString(36).substr(2,9);
+let networkObjects = {};
+
+socket.onmessage = e => {
+  let data = JSON.parse(e.data);
+
+  if(data.player === playerId) return;
+
+  let obj = networkObjects[data.id];
+  if(obj){
+    obj.position.fromArray(data.pos);
+    obj.rotation.fromArray(data.rot);
+  }
+};
+
+// ---------- AUTO ADD NETWORK COMPONENT ----------
+function addNetworkComponent(obj){
+  obj.networkId = Math.random().toString(36).substr(2,9);
+  obj.isGrabbed = false;
+
+  networkObjects[obj.networkId] = obj;
 }
 
-/* TOP BAR */
-#topbar {
-    height: 40px;
-    background: #3c3c3c;
-    display: flex;
-    align-items: center;
-    padding: 5px;
-    z-index: 2;
-    position: relative;
+// ---------- OVERRIDE CREATE OBJECT ----------
+let oldCreate = createObject;
+createObject = function(mesh){
+  oldCreate(mesh);
+  addNetworkComponent(mesh);
+};
+
+// ---------- SYNC ----------
+function syncObject(obj){
+  if(socket.readyState !== 1) return;
+
+  socket.send(JSON.stringify({
+    player: playerId,
+    id: obj.networkId,
+    pos: [obj.position.x,obj.position.y,obj.position.z],
+    rot: [obj.rotation.x,obj.rotation.y,obj.rotation.z]
+  }));
 }
 
-/* MENU */
-.menu {
-    position: relative;
-    margin-right: 10px;
-    cursor: pointer;
-}
+// ---------- VR GRABBING ----------
+let grabbed = null;
 
-.dropdown {
-    display: none;
-    position: absolute;
-    top: 30px;
-    background: #444;
-    border: 1px solid #000;
-}
-
-.dropdown div {
-    padding: 5px;
-}
-
-.dropdown div:hover {
-    background: #666;
-}
-
-.menu:hover .dropdown {
-    display: block;
-}
-
-/* LEFT TOOLBAR */
-#toolbar {
-    position: absolute;
-    left: 0;
-    top: 40px;
-    width: 50px;
-    bottom: 150px;
-    background: #3a3a3a;
-}
-
-/* RIGHT PANEL */
-#sidebar {
-    position: absolute;
-    right: 0;
-    top: 40px;
-    width: 260px;
-    bottom: 150px;
-    background: #313131;
-    padding: 10px;
-}
-
-/* BOTTOM PANEL */
-#bottomPanel {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 150px;
-    background: #1f1f1f;
-}
-
-/* VIEWPORT AREA (CENTER) */
-#viewport {
-    position: absolute;
-    top: 40px;
-    left: 50px;
-    right: 260px;
-    bottom: 150px;
-    overflow: hidden;
-}
-
-/* PREVIEW INSIDE VIEWPORT */
-#preview {
-    position: absolute;
-    width: 300px;
-    height: 200px;
-    bottom: 10px;
-    right: 10px;
-    border: 2px solid black;
-}
-
-/* SCRIPT */
-textarea {
-    width: 100%;
-    height: 110px;
-    background: #111;
-    color: #0f0;
-    border: none;
-}
-</style>
-</head>
-
-<body>
-
-<div id="topbar">
-    <div class="menu">
-        Objects
-        <div class="dropdown">
-            <div onclick="addCube()">Cube</div>
-            <div onclick="addSphere()">Sphere</div>
-            <div onclick="addPlane()">Plane</div>
-        </div>
-    </div>
-</div>
-
-<div id="toolbar"></div>
-
-<div id="sidebar">
-    <h3>Properties</h3>
-    <div id="info">Nothing selected</div>
-</div>
-
-<div id="viewport">
-    <canvas id="main"></canvas>
-    <canvas id="preview"></canvas>
-</div>
-
-<div id="bottomPanel">
-<textarea id="scriptBox">// type JS here</textarea>
-<button onclick="runScript()">Run</button>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.158/build/three.min.js"></script>
-
-<script>
-let scene = new THREE.Scene();
-scene.background = new THREE.Color(0x2b2b2b);
-
-/* MAIN CAMERA */
-let camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-camera.position.set(3,3,5);
-
-/* PREVIEW CAMERA */
-let previewCamera = new THREE.PerspectiveCamera(75, 300/200, 0.1, 1000);
-previewCamera.position.set(0,2,5);
-
-/* VIEWPORT SIZE */
-let viewport = document.getElementById("viewport");
-
-/* MAIN RENDERER */
-let renderer = new THREE.WebGLRenderer({
-    canvas: document.getElementById("main"),
-    antialias:true
+controller1.addEventListener("selectstart", ()=>{
+  let obj = getClosestObject(controller1.position);
+  if(obj){
+    grabbed = obj;
+    obj.isGrabbed = true;
+  }
 });
 
-/* PREVIEW RENDERER */
-let previewRenderer = new THREE.WebGLRenderer({
-    canvas: document.getElementById("preview")
+controller1.addEventListener("selectend", ()=>{
+  if(grabbed){
+    grabbed.isGrabbed = false;
+    grabbed = null;
+  }
 });
-previewRenderer.setSize(300,200);
 
-/* RESIZE FIX */
-function resize(){
-    let w = viewport.clientWidth;
-    let h = viewport.clientHeight;
+// ---------- FIND OBJECT ----------
+function getClosestObject(pos){
+  let closest=null, dist=999;
 
-    renderer.setSize(w,h);
-    camera.aspect = w/h;
-    camera.updateProjectionMatrix();
-}
-window.addEventListener("resize", resize);
-resize();
-
-/* LIGHT */
-let light = new THREE.DirectionalLight(0xffffff,1);
-light.position.set(5,5,5);
-scene.add(light);
-scene.add(new THREE.AmbientLight(0x404040));
-
-/* OBJECTS */
-let objects=[];
-let selected=null;
-
-function addCube(){
-    let m=new THREE.Mesh(
-        new THREE.BoxGeometry(),
-        new THREE.MeshStandardMaterial({color:0x888888})
-    );
-    scene.add(m);
-    objects.push(m);
-}
-
-function addSphere(){
-    let m=new THREE.Mesh(
-        new THREE.SphereGeometry(0.5,32,32),
-        new THREE.MeshStandardMaterial({color:0x888888})
-    );
-    scene.add(m);
-    objects.push(m);
-}
-
-function addPlane(){
-    let m=new THREE.Mesh(
-        new THREE.PlaneGeometry(5,5),
-        new THREE.MeshStandardMaterial({color:0x555555, side:2})
-    );
-    m.rotation.x=Math.PI/2;
-    scene.add(m);
-    objects.push(m);
-}
-
-/* SELECT */
-let raycaster=new THREE.Raycaster();
-let mouse=new THREE.Vector2();
-
-window.addEventListener("click",e=>{
-    let rect = renderer.domElement.getBoundingClientRect();
-
-    mouse.x=((e.clientX-rect.left)/rect.width)*2-1;
-    mouse.y=-((e.clientY-rect.top)/rect.height)*2+1;
-
-    raycaster.setFromCamera(mouse,camera);
-    let hit=raycaster.intersectObjects(objects);
-
-    if(hit.length){
-        selected=hit[0].object;
-        document.getElementById("info").innerText=selected.type;
+  objects.forEach(o=>{
+    let d = o.position.distanceTo(pos);
+    if(d < dist && d < 1){
+      dist = d;
+      closest = o;
     }
-});
+  });
 
-/* RIGHT CLICK LOOK */
-let looking=false;
-
-window.addEventListener("mousedown",e=>{
-    if(e.button===2) looking=true;
-});
-window.addEventListener("mouseup",e=>{
-    if(e.button===2) looking=false;
-});
-window.addEventListener("mousemove",e=>{
-    if(!looking) return;
-
-    camera.rotation.y-=e.movementX*0.002;
-    camera.rotation.x-=e.movementY*0.002;
-});
-window.addEventListener("contextmenu",e=>e.preventDefault());
-
-/* CONTROLS */
-window.addEventListener("keydown",e=>{
-    if(!selected) return;
-
-    let s=0.2;
-
-    if(e.key==="w") selected.position.z-=s;
-    if(e.key==="s") selected.position.z+=s;
-    if(e.key==="a") selected.position.x-=s;
-    if(e.key==="d") selected.position.x+=s;
-
-    if(e.key==="q") selected.rotation.y-=0.1;
-    if(e.key==="e") selected.rotation.y+=0.1;
-
-    if(e.key==="z") selected.scale.multiplyScalar(0.9);
-    if(e.key==="x") selected.scale.multiplyScalar(1.1);
-});
-
-/* PREVIEW CAMERA */
-window.addEventListener("keydown",e=>{
-    let s=0.3;
-
-    if(e.key==="i") previewCamera.position.z-=s;
-    if(e.key==="k") previewCamera.position.z+=s;
-    if(e.key==="j") previewCamera.position.x-=s;
-    if(e.key==="l") previewCamera.position.x+=s;
-});
-
-/* SCRIPT */
-function runScript(){
-    try{ eval(document.getElementById("scriptBox").value); }
-    catch(e){ alert(e); }
+  return closest;
 }
 
-/* LOOP */
-function animate(){
-    requestAnimationFrame(animate);
+// ---------- UPDATE LOOP PATCH ----------
+let oldLoop = animate;
+animate = function(){
+  requestAnimationFrame(animate);
 
-    renderer.render(scene,camera);
-    previewRenderer.render(scene,previewCamera);
-}
-animate();
-</script>
+  objects.forEach(o=>{
+    // follow controller if grabbed
+    if(o.isGrabbed){
+      o.position.copy(controller1.position);
+    }
 
-</body>
-</html>
+    syncObject(o);
+  });
+
+  renderer.render(scene,camera);
+};
