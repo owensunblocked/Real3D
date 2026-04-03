@@ -22,6 +22,36 @@ body {
     padding: 5px;
 }
 
+/* MENU */
+.menu {
+    position: relative;
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.dropdown {
+    display: none;
+    position: absolute;
+    top: 30px;
+    left: 0;
+    background: #444;
+    border: 1px solid #000;
+    min-width: 120px;
+}
+
+.dropdown div {
+    padding: 5px;
+    cursor: pointer;
+}
+
+.dropdown div:hover {
+    background: #666;
+}
+
+.menu:hover .dropdown {
+    display: block;
+}
+
 /* LEFT TOOLBAR */
 #toolbar {
     position: absolute;
@@ -43,7 +73,7 @@ body {
     padding: 10px;
 }
 
-/* BOTTOM SCRIPT PANEL */
+/* BOTTOM PANEL */
 #bottomPanel {
     position: absolute;
     bottom: 0;
@@ -61,7 +91,7 @@ textarea {
     border: none;
 }
 
-/* PREVIEW WINDOW */
+/* PREVIEW */
 #preview {
     position: absolute;
     top: 50px;
@@ -70,24 +100,22 @@ textarea {
     height: 200px;
     border: 2px solid black;
 }
-
-/* BUTTONS */
-button {
-    background: #4a4a4a;
-    border: none;
-    color: white;
-    margin-right: 5px;
-    padding: 5px;
-}
 </style>
 </head>
 
 <body>
 
 <div id="topbar">
-    <button onclick="addCube()">Cube</button>
-    <button onclick="addSphere()">Sphere</button>
-    <button onclick="addPlane()">Plane</button>
+
+    <div class="menu">
+        Objects
+        <div class="dropdown">
+            <div onclick="addCube()">Cube</div>
+            <div onclick="addSphere()">Sphere</div>
+            <div onclick="addPlane()">Plane</div>
+        </div>
+    </div>
+
 </div>
 
 <div id="toolbar"></div>
@@ -183,7 +211,7 @@ window.addEventListener("click", e=>{
     }
 });
 
-/* CAMERA LOOK (RIGHT CLICK HOLD) */
+/* RIGHT CLICK LOOK */
 let isLooking = false;
 
 window.addEventListener("mousedown", e=>{
@@ -199,7 +227,6 @@ window.addEventListener("mousemove", e=>{
     camera.rotation.x -= e.movementY * 0.002;
 });
 
-/* DISABLE RIGHT CLICK MENU */
 window.addEventListener("contextmenu", e=>e.preventDefault());
 
 /* OBJECT CONTROLS */
