@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Fireout Studio</title>
+
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial;
+    background: #2b2b2b;
+    color: #ddd;
+}
+
+/* TOP BAR */
+#topbar {
+    height: 40px;
+    background: #3c3c3c;
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    border-bottom: 1px solid #000;
+}
+
+button {
+    margin-right: 5px;
+    background: #4a4a4a;
+    color: #ddd;
+    border: 1px solid #222;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #5a5a5a;
+}
+
+/* LEFT TOOLBAR */
+#toolbar {
+    position: absolute;
+    left: 0;
+    top: 40px;
+    width: 50px;
+    height: calc(100% - 40px);
+    background: #3a3a3a;
+    border-right: 1px solid #000;
+    display: flex;
+    flex-direction: column;
+}
+
+.tool {
+    padding: 10px;
+    text-align: center;
+    cursor: pointer;
+    border-bottom: 1px solid #222;
+}
+
+.tool:hover {
+    background: #505050;
+}
+
+/* RIGHT PANEL */
+#sidebar {
+    position: absolute;
+    right: 0;
+    top: 40px;
+    width: 260px;
+    height: calc(100% - 40px);
+    background: #313131;
+    border-left: 1px solid #000;
+    padding: 10px;
+}
+
+/* BOTTOM PANEL */
+#bottomPanel {
+    position: absolute;
+    bottom: 0;
+    left: 50px;
+    right: 260px;
+    height: 160px;
+    background: #1f1f1f;
+    border-top: 1px solid #000;
+}
+
+textarea {
+    width: 100%;
+    height: 120px;
+    background: #111;
+    color: #0f0;
+    border: none;
+    padding: 5px;
+}
+
+#runBtn {
+    width: 100%;
+    height: 40px;
+    background: #444;
+    border: none;
+}
+
+/* VIEWPORT FIX */
+canvas {
+    display: block;
+}
+</style>
+</head>
+
+<body>
+
+<div id="topbar">
+    <button onclick="addCube()">Add Cube</button>
+    <button onclick="addSphere()">Add Sphere</button>
+    <button onclick="addPlane()">Add Plane</button>
+</div>
+
+<div id="toolbar">
+    <div class="tool">🖐</div>
+    <div class="tool">↔</div>
+    <div class="tool">🔄</div>
+    <div class="tool">📏</div>
+</div>
+
+<div id="sidebar">
+    <h3>Properties</h3>
+    <div id="info">Nothing selected</div>
+</div>
+
+<div id="bottomPanel">
+    <textarea id="scriptBox">// JS scripting like Blender console</textarea>
+    <button id="runBtn" onclick="runScript()">Run Script</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+let scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2b2b2b);
+
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(3,3,5);
+
+let renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+let controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+let light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(5,5,5);
+scene.add(light);
+
+scene.add(new THREE.AmbientLight(0x404040));
+
+let objects = [];
+let selected = null;
+
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
+
+window.addEventListener("click", (event) => {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    let intersects = raycaster.intersectObjects(objects);
+
+    if(intersects.length > 0){
+        selected = intersects[0].object;
+        document.getElementById("info").innerText = selected.type;
+    }
+});
+
+function addCube(){
+    let mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(),
+        new THREE.MeshStandardMaterial({color: 0x888888})
+    );
+    scene.add(mesh);
+    objects.push(mesh);
+}
+
+function addSphere(){
+    let mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5,32,32),
+        new THREE.MeshStandardMaterial({color: 0x888888})
+    );
+    scene.add(mesh);
+    objects.push(mesh);
+}
+
+function addPlane(){
+    let mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(5,5),
+        new THREE.MeshStandardMaterial({color: 0x555555, side: THREE.DoubleSide})
+    );
+    mesh.rotation.x = Math.PI/2;
+    scene.add(mesh);
+    objects.push(mesh);
+}
+
+window.addEventListener("keydown", (e) => {
+    if(!selected) return;
+
+    let s = 0.2;
+
+    if(e.key==="w") selected.position.z-=s;
+    if(e.key==="s") selected.position.z+=s;
+    if(e.key==="a") selected.position.x-=s;
+    if(e.key==="d") selected.position.x+=s;
+
+    if(e.key==="q") selected.rotation.y-=0.1;
+    if(e.key==="e") selected.rotation.y+=0.1;
+});
+
+function runScript(){
+    try{
+        eval(document.getElementById("scriptBox").value);
+    }catch(e){
+        alert(e);
+    }
+}
+
+function animate(){
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+animate();
+</script>
+
+</body>
+</html>
