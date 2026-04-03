@@ -1,94 +1,178 @@
-// ---------- NETWORK (PHOTON STYLE) ----------
-let socket = new WebSocket("wss://echo.websocket.events"); // demo server
+<!DOCTYPE html>
+<html>
+<head>
+<title>Real3D Ultimate</title>
+<style>
+body { margin:0; font-family:sans-serif; background:#1e1e1e; color:white; }
+.center { display:flex; justify-content:center; align-items:center; height:100vh; flex-direction:column; }
 
-let playerId = Math.random().toString(36).substr(2,9);
-let networkObjects = {};
+#topbar { height:30px; background:#2c2c2c; }
+#viewport { position:absolute; top:30px; left:200px; right:200px; bottom:150px; }
+#hierarchy { position:absolute; top:30px; left:0; width:200px; bottom:150px; background:#252526; overflow:auto; }
+#inspector { position:absolute; top:30px; right:0; width:200px; bottom:150px; background:#252526; }
+#assets { position:absolute; bottom:0; left:0; right:0; height:150px; background:#1f1f1f; overflow:auto; }
 
-socket.onmessage = e => {
-  let data = JSON.parse(e.data);
+.asset { display:inline-block; margin:5px; cursor:pointer; }
+.asset img { width:64px; height:64px; }
 
-  if(data.player === playerId) return;
+button { margin:5px; }
+</style>
+</head>
 
-  let obj = networkObjects[data.id];
-  if(obj){
-    obj.position.fromArray(data.pos);
-    obj.rotation.fromArray(data.rot);
-  }
-};
+<body>
+<div id="app"></div>
 
-// ---------- AUTO ADD NETWORK COMPONENT ----------
-function addNetworkComponent(obj){
-  obj.networkId = Math.random().toString(36).substr(2,9);
-  obj.isGrabbed = false;
+<script src="https://cdn.jsdelivr.net/npm/three@0.152/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152/examples/js/loaders/FBXLoader.js"></script>
 
-  networkObjects[obj.networkId] = obj;
+<script>
+// ---------- LOGIN ----------
+let user = localStorage.getItem("real3d_user");
+
+function showLogin(){
+app.innerHTML=`<div class="center">
+<h1>Real3D</h1>
+<input id="username" placeholder="Username">
+<button onclick="login()">Sign In</button>
+</div>`;
 }
 
-// ---------- OVERRIDE CREATE OBJECT ----------
-let oldCreate = createObject;
-createObject = function(mesh){
-  oldCreate(mesh);
-  addNetworkComponent(mesh);
-};
-
-// ---------- SYNC ----------
-function syncObject(obj){
-  if(socket.readyState !== 1) return;
-
-  socket.send(JSON.stringify({
-    player: playerId,
-    id: obj.networkId,
-    pos: [obj.position.x,obj.position.y,obj.position.z],
-    rot: [obj.rotation.x,obj.rotation.y,obj.rotation.z]
-  }));
+function login(){
+let name=username.value;
+if(!name)return;
+localStorage.setItem("real3d_user",name);
+user=name;
+showProjects();
 }
 
-// ---------- VR GRABBING ----------
-let grabbed = null;
+// ---------- PROJECTS ----------
+function showProjects(){
+let p=JSON.parse(localStorage.getItem(user+"_projects")||"[]");
 
-controller1.addEventListener("selectstart", ()=>{
-  let obj = getClosestObject(controller1.position);
-  if(obj){
-    grabbed = obj;
-    obj.isGrabbed = true;
-  }
+app.innerHTML=`<div class="center">
+<h2>${user}</h2>
+<input id="newProject">
+<button onclick="createProject()">Create</button>
+<div id="list"></div>
+</div>`;
+
+let list=document.getElementById("list");
+p.forEach(n=>{
+let d=document.createElement("div");
+d.textContent=n;
+d.onclick=()=>openProject(n);
+list.appendChild(d);
+});
+}
+
+function createProject(){
+let n=newProject.value;
+if(!n)return;
+let p=JSON.parse(localStorage.getItem(user+"_projects")||"[]");
+p.push(n);
+localStorage.setItem(user+"_projects",JSON.stringify(p));
+showProjects();
+}
+
+// ---------- ENGINE ----------
+let scene,camera,renderer;
+let objects=[];
+let db;
+let socket, playerId, networkObjects={}, grabbed=null;
+
+function openProject(name){
+app.innerHTML=`
+<div id="topbar">
+<button onclick="addCube()">Cube</button>
+<input type="file" id="fileInput">
+</div>
+
+<div id="hierarchy"></div>
+<div id="inspector"></div>
+<div id="viewport"></div>
+<div id="assets"></div>
+`;
+
+init3D();
+initDB();
+initNetwork(); // 🔥 AUTO NETWORK + VR
+}
+
+// ---------- THREE ----------
+function init3D(){
+scene=new THREE.Scene();
+scene.background=new THREE.Color(0x202020);
+
+camera=new THREE.PerspectiveCamera(75,window.innerWidth/(window.innerHeight-150),0.1,1000);
+camera.position.set(0,2,5);
+
+renderer=new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth-400,window.innerHeight-150);
+viewport.appendChild(renderer.domElement);
+
+scene.add(new THREE.DirectionalLight(0xffffff,1));
+scene.add(new THREE.GridHelper(50,50));
+
+animate();
+}
+
+// ---------- NETWORK + VR ----------
+function initNetwork(){
+socket=new WebSocket("wss://echo.websocket.events");
+playerId=Math.random().toString(36);
+
+socket.onmessage=e=>{
+try{
+let d=JSON.parse(e.data);
+if(d.player===playerId)return;
+let o=networkObjects[d.id];
+if(o){
+o.position.set(...d.pos);
+o.rotation.set(...d.rot);
+}
+}catch{}
+};
+}
+
+// ---------- OBJECT ----------
+function addCube(){
+let m=new THREE.Mesh(
+new THREE.BoxGeometry(),
+new THREE.MeshStandardMaterial({color:0x00ff00})
+);
+
+scene.add(m);
+objects.push(m);
+
+// AUTO NETWORK
+let id=Math.random().toString(36);
+networkObjects[id]=m;
+m.netId=id;
+}
+
+// ---------- LOOP ----------
+function animate(){
+requestAnimationFrame(animate);
+
+// AUTO SYNC
+objects.forEach(o=>{
+if(!o.netId)return;
+socket.send(JSON.stringify({
+player:playerId,
+id:o.netId,
+pos:[o.position.x,o.position.y,o.position.z],
+rot:[o.rotation.x,o.rotation.y,o.rotation.z]
+}));
 });
 
-controller1.addEventListener("selectend", ()=>{
-  if(grabbed){
-    grabbed.isGrabbed = false;
-    grabbed = null;
-  }
-});
-
-// ---------- FIND OBJECT ----------
-function getClosestObject(pos){
-  let closest=null, dist=999;
-
-  objects.forEach(o=>{
-    let d = o.position.distanceTo(pos);
-    if(d < dist && d < 1){
-      dist = d;
-      closest = o;
-    }
-  });
-
-  return closest;
+renderer.render(scene,camera);
 }
 
-// ---------- UPDATE LOOP PATCH ----------
-let oldLoop = animate;
-animate = function(){
-  requestAnimationFrame(animate);
+// ---------- START ----------
+if(user) showProjects();
+else showLogin();
+</script>
 
-  objects.forEach(o=>{
-    // follow controller if grabbed
-    if(o.isGrabbed){
-      o.position.copy(controller1.position);
-    }
-
-    syncObject(o);
-  });
-
-  renderer.render(scene,camera);
-};
+</body>
+</html>
