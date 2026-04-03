@@ -20,6 +20,8 @@ body {
     display: flex;
     align-items: center;
     padding: 5px;
+    z-index: 2;
+    position: relative;
 }
 
 /* MENU */
@@ -33,15 +35,12 @@ body {
     display: none;
     position: absolute;
     top: 30px;
-    left: 0;
     background: #444;
     border: 1px solid #000;
-    min-width: 120px;
 }
 
 .dropdown div {
     padding: 5px;
-    cursor: pointer;
 }
 
 .dropdown div:hover {
@@ -58,7 +57,7 @@ body {
     left: 0;
     top: 40px;
     width: 50px;
-    height: calc(100% - 40px);
+    bottom: 150px;
     background: #3a3a3a;
 }
 
@@ -68,7 +67,7 @@ body {
     right: 0;
     top: 40px;
     width: 260px;
-    height: calc(100% - 40px);
+    bottom: 150px;
     background: #313131;
     padding: 10px;
 }
@@ -77,12 +76,33 @@ body {
 #bottomPanel {
     position: absolute;
     bottom: 0;
-    left: 50px;
-    right: 260px;
+    left: 0;
+    right: 0;
     height: 150px;
     background: #1f1f1f;
 }
 
+/* VIEWPORT AREA (CENTER) */
+#viewport {
+    position: absolute;
+    top: 40px;
+    left: 50px;
+    right: 260px;
+    bottom: 150px;
+    overflow: hidden;
+}
+
+/* PREVIEW INSIDE VIEWPORT */
+#preview {
+    position: absolute;
+    width: 300px;
+    height: 200px;
+    bottom: 10px;
+    right: 10px;
+    border: 2px solid black;
+}
+
+/* SCRIPT */
 textarea {
     width: 100%;
     height: 110px;
@@ -90,23 +110,12 @@ textarea {
     color: #0f0;
     border: none;
 }
-
-/* PREVIEW */
-#preview {
-    position: absolute;
-    top: 50px;
-    right: 270px;
-    width: 300px;
-    height: 200px;
-    border: 2px solid black;
-}
 </style>
 </head>
 
 <body>
 
 <div id="topbar">
-
     <div class="menu">
         Objects
         <div class="dropdown">
@@ -115,7 +124,6 @@ textarea {
             <div onclick="addPlane()">Plane</div>
         </div>
     </div>
-
 </div>
 
 <div id="toolbar"></div>
@@ -125,12 +133,15 @@ textarea {
     <div id="info">Nothing selected</div>
 </div>
 
+<div id="viewport">
+    <canvas id="main"></canvas>
+    <canvas id="preview"></canvas>
+</div>
+
 <div id="bottomPanel">
 <textarea id="scriptBox">// type JS here</textarea>
 <button onclick="runScript()">Run</button>
 </div>
-
-<canvas id="preview"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.158/build/three.min.js"></script>
 
@@ -139,35 +150,52 @@ let scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2b2b2b);
 
 /* MAIN CAMERA */
-let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+let camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
 camera.position.set(3,3,5);
 
 /* PREVIEW CAMERA */
 let previewCamera = new THREE.PerspectiveCamera(75, 300/200, 0.1, 1000);
 previewCamera.position.set(0,2,5);
 
-/* RENDERERS */
-let renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+/* VIEWPORT SIZE */
+let viewport = document.getElementById("viewport");
 
+/* MAIN RENDERER */
+let renderer = new THREE.WebGLRenderer({
+    canvas: document.getElementById("main"),
+    antialias:true
+});
+
+/* PREVIEW RENDERER */
 let previewRenderer = new THREE.WebGLRenderer({
     canvas: document.getElementById("preview")
 });
 previewRenderer.setSize(300,200);
 
-/* LIGHTS */
+/* RESIZE FIX */
+function resize(){
+    let w = viewport.clientWidth;
+    let h = viewport.clientHeight;
+
+    renderer.setSize(w,h);
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* LIGHT */
 let light = new THREE.DirectionalLight(0xffffff,1);
 light.position.set(5,5,5);
 scene.add(light);
 scene.add(new THREE.AmbientLight(0x404040));
 
-/* OBJECT SYSTEM */
-let objects = [];
-let selected = null;
+/* OBJECTS */
+let objects=[];
+let selected=null;
 
 function addCube(){
-    let m = new THREE.Mesh(
+    let m=new THREE.Mesh(
         new THREE.BoxGeometry(),
         new THREE.MeshStandardMaterial({color:0x888888})
     );
@@ -176,7 +204,7 @@ function addCube(){
 }
 
 function addSphere(){
-    let m = new THREE.Mesh(
+    let m=new THREE.Mesh(
         new THREE.SphereGeometry(0.5,32,32),
         new THREE.MeshStandardMaterial({color:0x888888})
     );
@@ -185,52 +213,53 @@ function addSphere(){
 }
 
 function addPlane(){
-    let m = new THREE.Mesh(
+    let m=new THREE.Mesh(
         new THREE.PlaneGeometry(5,5),
         new THREE.MeshStandardMaterial({color:0x555555, side:2})
     );
-    m.rotation.x = Math.PI/2;
+    m.rotation.x=Math.PI/2;
     scene.add(m);
     objects.push(m);
 }
 
 /* SELECT */
-let raycaster = new THREE.Raycaster();
-let mouse = new THREE.Vector2();
+let raycaster=new THREE.Raycaster();
+let mouse=new THREE.Vector2();
 
-window.addEventListener("click", e=>{
-    mouse.x = (e.clientX/window.innerWidth)*2-1;
-    mouse.y = -(e.clientY/window.innerHeight)*2+1;
+window.addEventListener("click",e=>{
+    let rect = renderer.domElement.getBoundingClientRect();
+
+    mouse.x=((e.clientX-rect.left)/rect.width)*2-1;
+    mouse.y=-((e.clientY-rect.top)/rect.height)*2+1;
 
     raycaster.setFromCamera(mouse,camera);
-    let hit = raycaster.intersectObjects(objects);
+    let hit=raycaster.intersectObjects(objects);
 
     if(hit.length){
-        selected = hit[0].object;
-        document.getElementById("info").innerText = selected.type;
+        selected=hit[0].object;
+        document.getElementById("info").innerText=selected.type;
     }
 });
 
 /* RIGHT CLICK LOOK */
-let isLooking = false;
+let looking=false;
 
-window.addEventListener("mousedown", e=>{
-    if(e.button === 2) isLooking = true;
+window.addEventListener("mousedown",e=>{
+    if(e.button===2) looking=true;
 });
-window.addEventListener("mouseup", e=>{
-    if(e.button === 2) isLooking = false;
+window.addEventListener("mouseup",e=>{
+    if(e.button===2) looking=false;
 });
-window.addEventListener("mousemove", e=>{
-    if(!isLooking) return;
+window.addEventListener("mousemove",e=>{
+    if(!looking) return;
 
-    camera.rotation.y -= e.movementX * 0.002;
-    camera.rotation.x -= e.movementY * 0.002;
+    camera.rotation.y-=e.movementX*0.002;
+    camera.rotation.x-=e.movementY*0.002;
 });
+window.addEventListener("contextmenu",e=>e.preventDefault());
 
-window.addEventListener("contextmenu", e=>e.preventDefault());
-
-/* OBJECT CONTROLS */
-window.addEventListener("keydown", e=>{
+/* CONTROLS */
+window.addEventListener("keydown",e=>{
     if(!selected) return;
 
     let s=0.2;
@@ -247,8 +276,8 @@ window.addEventListener("keydown", e=>{
     if(e.key==="x") selected.scale.multiplyScalar(1.1);
 });
 
-/* PREVIEW CAMERA MOVE */
-window.addEventListener("keydown", e=>{
+/* PREVIEW CAMERA */
+window.addEventListener("keydown",e=>{
     let s=0.3;
 
     if(e.key==="i") previewCamera.position.z-=s;
